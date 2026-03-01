@@ -57,6 +57,7 @@ export default function SendPage() {
       toast.error("Select a recipient first");
       return;
     }
+    if (sending) return;
 
     setSending(true);
 

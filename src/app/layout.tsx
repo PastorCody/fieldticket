@@ -27,6 +27,18 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "FieldTicket",
   },
+  openGraph: {
+    title: "FieldTicket — Voice-First Field Tickets",
+    description:
+      "Record job details by voice. AI creates professional field tickets. Email PDF reports instantly.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "FieldTicket — Voice-First Field Tickets",
+    description:
+      "Record job details by voice. AI creates professional field tickets. Email PDF reports instantly.",
+  },
 };
 
 export const viewport: Viewport = {

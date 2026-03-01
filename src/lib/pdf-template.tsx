@@ -212,10 +212,10 @@ export function FieldTicketPDF({
         </View>
 
         {/* Equipment */}
-        {ticket.equipment_used.length > 0 && (
+        {(ticket.equipment_used ?? []).length > 0 && (
           <View style={s.section}>
             <Text style={s.sectionTitle}>Equipment Used</Text>
-            {ticket.equipment_used.map((item, i) => (
+            {(ticket.equipment_used ?? []).map((item, i) => (
               <View key={i} style={s.listItem}>
                 <Text style={s.bullet}>{"\u2022"}</Text>
                 <Text style={s.listText}>{item}</Text>
@@ -225,7 +225,7 @@ export function FieldTicketPDF({
         )}
 
         {/* Materials */}
-        {ticket.materials_used.length > 0 && (
+        {(ticket.materials_used ?? []).length > 0 && (
           <View style={s.section}>
             <Text style={s.sectionTitle}>Materials Used</Text>
             <View style={s.tableHeader}>
@@ -237,7 +237,7 @@ export function FieldTicketPDF({
                 Unit
               </Text>
             </View>
-            {ticket.materials_used.map((m, i) => (
+            {(ticket.materials_used ?? []).map((m, i) => (
               <View key={i} style={s.tableRow}>
                 <Text style={[s.tableCell, { flex: 3 }]}>{m.item}</Text>
                 <Text style={[s.tableCell, { flex: 1, textAlign: "center" }]}>

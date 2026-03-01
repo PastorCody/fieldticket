@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 function getSupportedMimeType(): string {
   if (typeof window === "undefined") return "audio/webm";
@@ -72,6 +72,15 @@ export function useAudioRecorder() {
   const resetRecording = useCallback(() => {
     setAudioBlob(null);
     setDuration(0);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      audioContextRef.current?.close().catch(() => {});
+    };
   }, []);
 
   return {

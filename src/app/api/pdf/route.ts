@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { FieldTicketPDF } from "@/lib/pdf-template";
@@ -11,17 +12,28 @@ export const maxDuration = 30;
 function generateTicketNumber(ticketId: string, createdAt: string): string {
   const date = new Date(createdAt);
   const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
-  return `FT-${dateStr}-${ticketId.slice(0, 4).toUpperCase()}`;
+  return `FT-${dateStr}-${ticketId.slice(0, 8).toUpperCase()}`;
 }
 
 export async function POST(request: Request) {
   try {
+    // Auth check
+    const authClient = await createClient();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { ticketId, format } = await request.json();
     if (!ticketId) {
       return NextResponse.json(
         { error: "ticketId is required" },
         { status: 400 }
       );
+    }
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(ticketId)) {
+      return NextResponse.json({ error: "Invalid ticketId" }, { status: 400 });
     }
 
     const supabase = await createServiceClient();
@@ -37,6 +49,11 @@ export async function POST(request: Request) {
         { error: "Ticket not found" },
         { status: 404 }
       );
+    }
+
+    // Ownership check
+    if (ticket.user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { data: profile } = await supabase

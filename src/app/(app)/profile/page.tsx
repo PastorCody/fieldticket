@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Upload, Check } from "lucide-react";
+import { Loader2, Upload, Check, LogOut } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import type { Profile } from "@/types";
 
@@ -46,6 +47,10 @@ export default function ProfilePage() {
   async function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be under 5MB");
+      return;
+    }
     setLogoFile(file);
     setLogoPreview(URL.createObjectURL(file));
   }
@@ -80,9 +85,9 @@ export default function ProfilePage() {
     const { error } = await supabase
       .from("profiles")
       .update({
-        full_name: profile.full_name,
-        phone: profile.phone,
-        company_name: profile.company_name,
+        full_name: (profile.full_name || "").trim(),
+        phone: (profile.phone || "").trim() || null,
+        company_name: (profile.company_name || "").trim() || null,
         logo_url: logoUrl,
         updated_at: new Date().toISOString(),
       })
@@ -209,6 +214,20 @@ export default function ProfilePage() {
           </form>
         </CardContent>
       </Card>
+
+      <Separator className="my-2" />
+
+      <Button
+        variant="ghost"
+        onClick={async () => {
+          await supabase.auth.signOut();
+          router.push("/login");
+        }}
+        className="w-full h-12 text-destructive hover:text-destructive hover:bg-destructive/10"
+      >
+        <LogOut className="h-5 w-5 mr-2" />
+        Sign Out
+      </Button>
     </div>
   );
 }

@@ -14,6 +14,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Loader2,
   Plus,
   Star,
@@ -39,6 +49,7 @@ export default function ContactsPage() {
     phone: "",
     company: "",
   });
+  const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -74,19 +85,34 @@ export default function ContactsPage() {
   }
 
   async function handleSave() {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email.trim())) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    if (form.phone && !/^[\d\s\-\(\)\+]+$/.test(form.phone)) {
+      toast.error("Phone number contains invalid characters");
+      return;
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return;
 
+    const trimmed = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim() || null,
+      company: form.company.trim() || null,
+    };
+
     if (editing) {
       await supabase
         .from("contacts")
         .update({
-          name: form.name,
-          email: form.email,
-          phone: form.phone || null,
-          company: form.company || null,
+          ...trimmed,
           updated_at: new Date().toISOString(),
         })
         .eq("id", editing.id);
@@ -94,10 +120,7 @@ export default function ContactsPage() {
     } else {
       await supabase.from("contacts").insert({
         user_id: user.id,
-        name: form.name,
-        email: form.email,
-        phone: form.phone || null,
-        company: form.company || null,
+        ...trimmed,
       });
       toast.success("Contact added");
     }
@@ -108,6 +131,7 @@ export default function ContactsPage() {
 
   async function handleDelete(id: string) {
     await supabase.from("contacts").delete().eq("id", id);
+    setDeleteTarget(null);
     toast.success("Contact deleted");
     loadContacts();
   }
@@ -268,7 +292,7 @@ export default function ContactsPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleDelete(contact.id)}
+                    onClick={() => setDeleteTarget(contact)}
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -279,6 +303,27 @@ export default function ContactsPage() {
           ))}
         </div>
       )}
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent className="bg-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Contact</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deleteTarget?.name}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTarget && handleDelete(deleteTarget.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

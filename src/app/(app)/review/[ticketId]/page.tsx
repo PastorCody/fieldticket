@@ -110,7 +110,8 @@ export default function ReviewPage() {
     });
   }
 
-  async function handleSave() {
+  async function handleSave(): Promise<boolean> {
+    if (saving) return false;
     setSaving(true);
     const { error } = await supabase
       .from("tickets")
@@ -122,15 +123,19 @@ export default function ReviewPage() {
 
     if (error) {
       toast.error("Failed to save");
-    } else {
-      toast.success("Ticket saved");
+      setSaving(false);
+      return false;
     }
+    toast.success("Ticket saved");
     setSaving(false);
+    return true;
   }
 
   async function handleContinue() {
-    await handleSave();
-    router.push(`/send/${ticketId}`);
+    const success = await handleSave();
+    if (success) {
+      router.push(`/send/${ticketId}`);
+    }
   }
 
   if (loading) {
@@ -449,6 +454,7 @@ export default function ReviewPage() {
         </Button>
         <Button
           onClick={handleContinue}
+          disabled={saving}
           className="flex-1 h-12 text-base bg-orange-500 hover:bg-orange-600 text-white"
         >
           <Send className="h-5 w-5 mr-2" />

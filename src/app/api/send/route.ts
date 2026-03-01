@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { FieldTicketPDF } from "@/lib/pdf-template";
@@ -41,12 +42,24 @@ function buildEmailHtml(
 
 export async function POST(request: Request) {
   try {
+    // Auth check
+    const authClient = await createClient();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { ticketId, recipientId } = await request.json();
     if (!ticketId || !recipientId) {
       return NextResponse.json(
         { error: "ticketId and recipientId are required" },
         { status: 400 }
       );
+    }
+
+    const uuidPrefix = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+    if (!uuidPrefix.test(ticketId) || !uuidPrefix.test(recipientId)) {
+      return NextResponse.json({ error: "Invalid ID format" }, { status: 400 });
     }
 
     const supabase = await createServiceClient();
@@ -59,6 +72,12 @@ export async function POST(request: Request) {
 
     if (!ticketRes.data)
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+
+    // Ownership check
+    if (ticketRes.data.user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     if (!contactRes.data)
       return NextResponse.json(
         { error: "Contact not found" },
@@ -83,10 +102,10 @@ export async function POST(request: Request) {
     const structured = ticket.structured_data as StructuredTicket;
     const prof = profile as Profile;
 
-    // Generate ticket number
+    // Generate ticket number (8 chars to avoid collision)
     const date = new Date(ticket.created_at);
     const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
-    const ticketNumber = `FT-${dateStr}-${ticketId.slice(0, 4).toUpperCase()}`;
+    const ticketNumber = `FT-${dateStr}-${ticketId.slice(0, 8).toUpperCase()}`;
 
     // Generate actual PDF binary
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,22 +134,15 @@ export async function POST(request: Request) {
       pdfFilename: `${ticketNumber}.pdf`,
     });
 
-    // Upload PDF to Supabase Storage
-    const pdfPath = `${ticket.user_id}/${ticketNumber}.pdf`;
-    await supabase.storage.from("pdfs").upload(pdfPath, pdfBuffer, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-
-    // Update ticket status
+    // Email sent successfully — update status immediately (don't let storage failure block this)
+    const now = new Date().toISOString();
     await supabase
       .from("tickets")
       .update({
         status: "sent",
         recipient_id: recipientId,
-        sent_at: new Date().toISOString(),
-        pdf_url: pdfPath,
-        updated_at: new Date().toISOString(),
+        sent_at: now,
+        updated_at: now,
       })
       .eq("id", ticketId);
 
@@ -140,7 +152,23 @@ export async function POST(request: Request) {
       recipient_email: contact.email,
       resend_id: result.id || null,
       status: "sent",
+      sent_at: now,
     });
+
+    // Upload PDF to Supabase Storage (non-blocking — don't fail the request if storage fails)
+    const pdfPath = `${ticket.user_id}/${ticketNumber}.pdf`;
+    try {
+      await supabase.storage.from("pdfs").upload(pdfPath, pdfBuffer, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+      await supabase
+        .from("tickets")
+        .update({ pdf_url: pdfPath })
+        .eq("id", ticketId);
+    } catch (storageError) {
+      console.error("PDF storage upload failed (email was sent):", storageError);
+    }
 
     return NextResponse.json({ success: true, ticketNumber });
   } catch (error) {
