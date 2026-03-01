@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { renderToBuffer } from "@react-pdf/renderer";
+import { FieldTicketPDF } from "@/lib/pdf-template";
 import { sendViaN8n } from "@/lib/n8n";
+import React from "react";
 import type { StructuredTicket, Profile, Contact } from "@/types";
 
 export const runtime = "nodejs";
@@ -85,22 +88,21 @@ export async function POST(request: Request) {
     const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
     const ticketNumber = `FT-${dateStr}-${ticketId.slice(0, 4).toUpperCase()}`;
 
-    // Generate PDF HTML for n8n to convert
-    const pdfRes = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/pdf`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticketId }),
-      }
-    );
-    const pdfData = await pdfRes.json();
+    // Generate actual PDF binary
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const element = React.createElement(FieldTicketPDF, {
+      ticket: structured,
+      profile: prof,
+      ticketNumber,
+    }) as any;
+    const pdfBuffer = await renderToBuffer(element);
+    const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
 
     // Build email
     const subject = `Field Ticket - ${structured.well_name || "Job"} - ${structured.job_date}`;
     const htmlBody = buildEmailHtml(structured, prof, ticketNumber);
 
-    // Send via n8n webhook (n8n handles PDF conversion + Gmail send)
+    // Send via n8n webhook (n8n attaches the PDF and sends via Gmail)
     const result = await sendViaN8n({
       recipientEmail: contact.email,
       recipientName: contact.name,
@@ -109,8 +111,15 @@ export async function POST(request: Request) {
       companyName: prof.company_name || "",
       subject,
       htmlBody,
-      pdfBase64: Buffer.from(pdfData.html).toString("base64"),
+      pdfBase64,
       pdfFilename: `${ticketNumber}.pdf`,
+    });
+
+    // Upload PDF to Supabase Storage
+    const pdfPath = `${ticket.user_id}/${ticketNumber}.pdf`;
+    await supabase.storage.from("pdfs").upload(pdfPath, pdfBuffer, {
+      contentType: "application/pdf",
+      upsert: true,
     });
 
     // Update ticket status
@@ -120,6 +129,7 @@ export async function POST(request: Request) {
         status: "sent",
         recipient_id: recipientId,
         sent_at: new Date().toISOString(),
+        pdf_url: pdfPath,
         updated_at: new Date().toISOString(),
       })
       .eq("id", ticketId);

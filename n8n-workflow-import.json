@@ -1,0 +1,112 @@
+{
+  "name": "FieldTicket Email Send",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fieldticket-send",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "fieldticket-send"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convert base64 PDF to binary buffer for Gmail attachment\nconst input = $input.first().json;\n\n// Decode the base64 PDF into a Buffer\nconst pdfBuffer = Buffer.from(input.pdfBase64, 'base64');\n\n// Return both the JSON data and the binary PDF\nreturn [{\n  json: {\n    recipientEmail: input.recipientEmail,\n    recipientName: input.recipientName,\n    senderName: input.senderName,\n    senderEmail: input.senderEmail,\n    companyName: input.companyName,\n    subject: input.subject,\n    htmlBody: input.htmlBody,\n    pdfFilename: input.pdfFilename\n  },\n  binary: {\n    attachment: {\n      data: pdfBuffer.toString('base64'),\n      mimeType: 'application/pdf',\n      fileName: input.pdfFilename || 'field-ticket.pdf'\n    }\n  }\n}];"
+      },
+      "id": "code-1",
+      "name": "Prepare PDF Attachment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.recipientEmail }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.htmlBody }}",
+        "options": {
+          "replyTo": "={{ $json.senderEmail }}",
+          "senderName": "={{ $json.senderName }} via FieldTicket",
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "attachment"
+              }
+            ]
+          }
+        }
+      },
+      "id": "gmail-1",
+      "name": "Send Email with PDF",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [690, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, messageId: $json.id || 'sent' }) }}"
+      },
+      "id": "respond-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [910, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare PDF Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF Attachment": {
+      "main": [
+        [
+          {
+            "node": "Send Email with PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email with PDF": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionTimeout": 120,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {}
+}
