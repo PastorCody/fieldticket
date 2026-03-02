@@ -1,31 +1,45 @@
-export async function sendViaN8n(payload: {
-  recipientEmail: string;
-  recipientName: string;
-  senderName: string;
-  senderEmail: string;
-  companyName: string;
+export async function sendEmail(payload: {
+  to: string;
   subject: string;
-  htmlBody: string;
+  html: string;
   pdfBase64: string;
   pdfFilename: string;
-}): Promise<{ success: boolean; id?: string }> {
-  const webhookUrl = process.env.N8N_WEBHOOK_URL;
+  replyTo?: string;
+}): Promise<{ id: string }> {
+  const apiKey = process.env.RESEND_API_KEY;
 
-  if (!webhookUrl) {
-    throw new Error("N8N_WEBHOOK_URL is not configured");
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const response = await fetch(webhookUrl, {
+  const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM_EMAIL || "FieldTicket <onboarding@resend.dev>",
+      to: [payload.to],
+      subject: payload.subject,
+      html: payload.html,
+      reply_to: payload.replyTo,
+      attachments: [
+        {
+          filename: payload.pdfFilename,
+          content: payload.pdfBase64,
+        },
+      ],
+    }),
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`n8n webhook failed: ${response.status} ${text}`);
+    const err = await response.json().catch(() => ({}));
+    throw new Error(
+      `Resend API error: ${response.status} ${err.message || JSON.stringify(err)}`
+    );
   }
 
-  const data = await response.json().catch(() => ({}));
-  return { success: true, id: data.id || data.messageId };
+  const data = await response.json();
+  return { id: data.id };
 }

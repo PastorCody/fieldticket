@@ -104,8 +104,8 @@ export default function RecordPage() {
         throw new Error(err.error || "AI structuring failed");
       }
 
-      toast.success("Ticket created! Review it now.");
-      router.push(`/review/${ticketId}`);
+      toast.success("Ticket created! Choose a recipient.");
+      router.push(`/recipient/${ticketId}`);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Something went wrong"

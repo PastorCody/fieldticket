@@ -50,6 +50,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Onboarding gate — cookie-based for speed (no DB call per request)
+  // If authenticated but hasn't completed onboarding, redirect to onboarding
+  if (user && !pathname.startsWith("/onboarding") && !isPublicRoute) {
+    const onboarded = request.cookies.get("ft_onboarded")?.value;
+    if (!onboarded) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/onboarding";
+      return NextResponse.redirect(url);
+    }
+  }
+
   return supabaseResponse;
 }
 

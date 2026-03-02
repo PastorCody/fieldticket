@@ -43,17 +43,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { ticket, questions } = await structureTranscript(transcript);
+    const { ticket, questions, pricing } = await structureTranscript(transcript);
     await supabase
       .from("tickets")
       .update({
         structured_data: ticket,
         ai_questions: questions,
+        pricing_data: pricing || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", ticketId);
 
-    return NextResponse.json({ ticket, questions });
+    return NextResponse.json({ ticket, questions, pricing });
   } catch (error) {
     console.error("Structuring error:", error);
     return NextResponse.json(

@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { FieldTicketPDF } from "@/lib/pdf-template";
 import React from "react";
-import type { StructuredTicket, Profile } from "@/types";
+import type { StructuredTicket, Profile, PricingData } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -72,6 +72,7 @@ export async function POST(request: Request) {
     const ticketNumber = generateTicketNumber(ticketId, ticket.created_at);
     const structured = ticket.structured_data as StructuredTicket;
     const prof = profile as Profile;
+    const pricingData = ticket.pricing_data as PricingData | null;
 
     // Generate actual PDF buffer
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
       ticket: structured,
       profile: prof,
       ticketNumber,
+      pricing: pricingData,
     }) as any;
     const pdfBuffer = await renderToBuffer(element);
 

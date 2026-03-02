@@ -3,17 +3,40 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { FieldTicketPDF } from "@/lib/pdf-template";
-import { sendViaN8n } from "@/lib/n8n";
+import { sendEmail } from "@/lib/n8n";
 import React from "react";
-import type { StructuredTicket, Profile, Contact } from "@/types";
+import type { StructuredTicket, Profile, Contact, PricingData } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-function buildEmailHtml(
+function buildPricingHtml(pricing: PricingData | null): string {
+  if (!pricing || (pricing.rate_type === "none" && (!pricing.line_items || pricing.line_items.length === 0))) {
+    return "";
+  }
+  let html = `<tr><td colspan="2" style="padding:8px 0 4px 0;"><strong style="color:#ff6b35;">Pricing</strong></td></tr>`;
+  if (pricing.rate_type !== "none") {
+    const rateLabel = pricing.rate_type === "day" ? "Day Rate" : pricing.rate_type === "hourly" ? "Hourly Rate" : "Flat Rate";
+    const rateVal = pricing.day_rate || pricing.hourly_rate || pricing.flat_rate || 0;
+    html += `<tr><td style="padding:4px 0;color:#666;">${rateLabel}:</td><td style="padding:4px 0;font-weight:bold;">$${rateVal.toFixed(2)}</td></tr>`;
+    if (pricing.subtotal) {
+      html += `<tr><td style="padding:4px 0;color:#666;">Subtotal:</td><td style="padding:4px 0;font-weight:bold;">$${pricing.subtotal.toFixed(2)}</td></tr>`;
+    }
+  }
+  if (pricing.total != null && pricing.total > 0) {
+    html += `<tr><td style="padding:4px 0;color:#666;">Total:</td><td style="padding:4px 0;font-weight:bold;color:#ff6b35;font-size:16px;">$${pricing.total.toFixed(2)}</td></tr>`;
+  }
+  if (pricing.notes) {
+    html += `<tr><td style="padding:4px 0;color:#666;">Reference:</td><td style="padding:4px 0;">${pricing.notes}</td></tr>`;
+  }
+  return html;
+}
+
+function buildRecipientEmailHtml(
   ticket: StructuredTicket,
   profile: Profile,
-  ticketNumber: string
+  ticketNumber: string,
+  pricing?: PricingData | null
 ): string {
   return `
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
@@ -28,6 +51,8 @@ function buildEmailHtml(
       <tr><td style="padding:4px 0;color:#666;">Well:</td><td style="padding:4px 0;font-weight:bold;">${ticket.well_name}</td></tr>
       <tr><td style="padding:4px 0;color:#666;">Date:</td><td style="padding:4px 0;font-weight:bold;">${ticket.job_date}</td></tr>
       <tr><td style="padding:4px 0;color:#666;">Hours:</td><td style="padding:4px 0;font-weight:bold;">${ticket.hours_worked}</td></tr>
+      ${(ticket.custom_fields ?? []).filter(cf => cf.label && cf.value).map(cf => `<tr><td style="padding:4px 0;color:#666;">${cf.label}:</td><td style="padding:4px 0;font-weight:bold;">${cf.value}</td></tr>`).join("")}
+      ${buildPricingHtml(pricing || null)}
     </table>
     <p style="color:#666;">${ticket.work_description?.slice(0, 300) || ""}${(ticket.work_description?.length || 0) > 300 ? "..." : ""}</p>
     <p style="margin-top:16px;color:#888;font-size:12px;">The complete field ticket is attached as a PDF.</p>
@@ -36,6 +61,40 @@ function buildEmailHtml(
     <p style="margin:2px 0;color:#666;">${profile.company_name || ""}</p>
     ${profile.phone ? `<p style="margin:2px 0;color:#666;">${profile.phone}</p>` : ""}
     <p style="margin:12px 0 0;font-size:11px;color:#bbb;">Sent via FieldTicket</p>
+  </div>
+</div>`;
+}
+
+function buildSenderCopyHtml(
+  ticket: StructuredTicket,
+  profile: Profile,
+  contact: Contact,
+  ticketNumber: string,
+  pricing?: PricingData | null
+): string {
+  return `
+<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+  <div style="background:#1a1a2e;padding:20px;border-radius:8px 8px 0 0;">
+    <h2 style="color:#ff6b35;margin:0;">Your Field Ticket Copy</h2>
+    <p style="color:#ccc;margin:4px 0 0;">${ticketNumber}</p>
+  </div>
+  <div style="background:#f9fafb;padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">
+    <p style="color:#333;font-weight:bold;">This field ticket was sent to ${contact.name} (${contact.email})${contact.company ? ` at ${contact.company}` : ""}.</p>
+    <p style="color:#666;">Below is a summary of what was sent. The full PDF is attached.</p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+      <tr><td style="padding:4px 0;color:#666;width:120px;">Job Type:</td><td style="padding:4px 0;font-weight:bold;">${ticket.job_type}</td></tr>
+      <tr><td style="padding:4px 0;color:#666;">Well:</td><td style="padding:4px 0;font-weight:bold;">${ticket.well_name}</td></tr>
+      ${ticket.lease_name ? `<tr><td style="padding:4px 0;color:#666;">Lease:</td><td style="padding:4px 0;font-weight:bold;">${ticket.lease_name}</td></tr>` : ""}
+      ${ticket.operator ? `<tr><td style="padding:4px 0;color:#666;">Operator:</td><td style="padding:4px 0;font-weight:bold;">${ticket.operator}</td></tr>` : ""}
+      <tr><td style="padding:4px 0;color:#666;">Date:</td><td style="padding:4px 0;font-weight:bold;">${ticket.job_date}</td></tr>
+      <tr><td style="padding:4px 0;color:#666;">Hours:</td><td style="padding:4px 0;font-weight:bold;">${ticket.hours_worked}</td></tr>
+      ${(ticket.custom_fields ?? []).filter(cf => cf.label && cf.value).map(cf => `<tr><td style="padding:4px 0;color:#666;">${cf.label}:</td><td style="padding:4px 0;font-weight:bold;">${cf.value}</td></tr>`).join("")}
+      ${buildPricingHtml(pricing || null)}
+    </table>
+    <p style="color:#666;">${ticket.work_description?.slice(0, 500) || ""}${(ticket.work_description?.length || 0) > 500 ? "..." : ""}</p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
+    <p style="margin:0;color:#888;font-size:12px;">This is your copy for your records. The same field ticket and PDF was delivered to ${contact.name}.</p>
+    <p style="margin:8px 0 0;font-size:11px;color:#bbb;">Sent via FieldTicket</p>
   </div>
 </div>`;
 }
@@ -101,6 +160,7 @@ export async function POST(request: Request) {
 
     const structured = ticket.structured_data as StructuredTicket;
     const prof = profile as Profile;
+    const pricingData = ticket.pricing_data as PricingData | null;
 
     // Generate ticket number (8 chars to avoid collision)
     const date = new Date(ticket.created_at);
@@ -113,28 +173,42 @@ export async function POST(request: Request) {
       ticket: structured,
       profile: prof,
       ticketNumber,
+      pricing: pricingData,
     }) as any;
     const pdfBuffer = await renderToBuffer(element);
     const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
 
-    // Build email
-    const subject = `Field Ticket - ${structured.well_name || "Job"} - ${structured.job_date}`;
-    const htmlBody = buildEmailHtml(structured, prof, ticketNumber);
+    // ── 1. Send to RECIPIENT (employer) ──
+    const recipientSubject = `Field Ticket - ${structured.well_name || "Job"} - ${structured.job_date}`;
+    const recipientHtml = buildRecipientEmailHtml(structured, prof, ticketNumber, pricingData);
 
-    // Send via n8n webhook (n8n attaches the PDF and sends via Gmail)
-    const result = await sendViaN8n({
-      recipientEmail: contact.email,
-      recipientName: contact.name,
-      senderName: prof.full_name,
-      senderEmail: prof.email,
-      companyName: prof.company_name || "",
-      subject,
-      htmlBody,
+    const result = await sendEmail({
+      to: contact.email,
+      subject: recipientSubject,
+      html: recipientHtml,
       pdfBase64,
       pdfFilename: `${ticketNumber}.pdf`,
+      replyTo: prof.email,
     });
 
-    // Email sent successfully — update status immediately (don't let storage failure block this)
+    // ── 2. Send COPY to SENDER (the worker) ──
+    const senderSubject = `Your Copy: Field Ticket - ${structured.well_name || "Job"} - ${structured.job_date}`;
+    const senderHtml = buildSenderCopyHtml(structured, prof, contact, ticketNumber, pricingData);
+
+    try {
+      await sendEmail({
+        to: prof.email,
+        subject: senderSubject,
+        html: senderHtml,
+        pdfBase64,
+        pdfFilename: `${ticketNumber}.pdf`,
+      });
+    } catch (senderCopyError) {
+      // Don't fail the whole request if the sender copy fails — the main email went through
+      console.error("Sender copy email failed (recipient email was sent):", senderCopyError);
+    }
+
+    // Email sent successfully — update status immediately
     const now = new Date().toISOString();
     await supabase
       .from("tickets")
@@ -146,7 +220,7 @@ export async function POST(request: Request) {
       })
       .eq("id", ticketId);
 
-    // Log email
+    // Log email (recipient)
     await supabase.from("email_log").insert({
       ticket_id: ticketId,
       recipient_email: contact.email,
@@ -155,7 +229,7 @@ export async function POST(request: Request) {
       sent_at: now,
     });
 
-    // Upload PDF to Supabase Storage (non-blocking — don't fail the request if storage fails)
+    // Upload PDF to Supabase Storage (non-blocking)
     const pdfPath = `${ticket.user_id}/${ticketNumber}.pdf`;
     try {
       await supabase.storage.from("pdfs").upload(pdfPath, pdfBuffer, {

@@ -33,8 +33,10 @@ import {
   Phone,
   Building2,
   Search,
+  FileSliders,
 } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 import type { Contact } from "@/types";
 
 export default function ContactsPage() {
@@ -50,6 +52,9 @@ export default function ContactsPage() {
     company: "",
   });
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
+  const [templateContactIds, setTemplateContactIds] = useState<Set<string>>(
+    new Set()
+  );
   const supabase = createClient();
 
   useEffect(() => {
@@ -57,13 +62,26 @@ export default function ContactsPage() {
   }, []);
 
   async function loadContacts() {
-    const { data } = await supabase
-      .from("contacts")
-      .select("*")
-      .order("is_favorite", { ascending: false })
-      .order("name");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-    setContacts((data as Contact[]) || []);
+    const [contactsRes, templatesRes] = await Promise.all([
+      supabase
+        .from("contacts")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("is_favorite", { ascending: false })
+        .order("name"),
+      supabase
+        .from("contact_templates")
+        .select("contact_id")
+        .eq("user_id", user.id),
+    ]);
+
+    setContacts((contactsRes.data as Contact[]) || []);
+    setTemplateContactIds(
+      new Set((templatesRes.data || []).map((t) => t.contact_id))
+    );
     setLoading(false);
   }
 
@@ -264,9 +282,16 @@ export default function ContactsPage() {
                   />
                 </button>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-foreground truncate">
-                    {contact.name}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-foreground truncate">
+                      {contact.name}
+                    </p>
+                    {templateContactIds.has(contact.id) && (
+                      <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-500">
+                        Template
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1 truncate">
                       <Mail className="h-3 w-3" />
@@ -281,6 +306,16 @@ export default function ContactsPage() {
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <Link href={`/contacts/${contact.id}/template`}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground"
+                      title="Edit template"
+                    >
+                      <FileSliders className="h-4 w-4" />
+                    </Button>
+                  </Link>
                   <Button
                     variant="ghost"
                     size="icon"

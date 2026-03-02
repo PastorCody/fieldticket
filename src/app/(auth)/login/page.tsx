@@ -66,7 +66,7 @@ function LoginForm() {
         setLoading(false);
         return;
       }
-      router.push("/profile");
+      router.push("/onboarding");
     }
   }
 
