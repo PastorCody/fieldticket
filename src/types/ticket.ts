@@ -122,6 +122,7 @@ export interface Profile {
   company_name: string | null;
   logo_url: string | null;
   signature_url: string | null;
+  is_admin?: boolean;
   onboarding_completed: boolean;
   trial_started_at: string | null;
   created_at: string;
@@ -147,4 +148,35 @@ export interface EmailLog {
   resend_id: string | null;
   status: string;
   sent_at: string;
+}
+
+// --- Admin Analytics ---
+
+export interface AdminStats {
+  overview: {
+    totalUsers: number;
+    totalTickets: number;
+    totalEmailsSent: number;
+    totalContacts: number;
+    ticketsByStatus: { draft: number; sent: number; viewed: number };
+    totalRevenue: number;
+    totalHours: number;
+  };
+  users: AdminUserRow[];
+  activity: { week: string; tickets: number; emails: number }[];
+  topJobTypes: { jobType: string; count: number }[];
+}
+
+export interface AdminUserRow {
+  id: string;
+  fullName: string;
+  email: string;
+  company: string | null;
+  signedUpAt: string;
+  ticketCount: number;
+  ticketsSent: number;
+  contactCount: number;
+  totalHours: number;
+  totalRevenue: number;
+  lastActive: string | null;
 }
