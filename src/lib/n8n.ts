@@ -1,3 +1,5 @@
+import { retryFetch } from "./retry-fetch";
+
 export async function sendEmail(payload: {
   to: string;
   subject: string;
@@ -12,26 +14,29 @@ export async function sendEmail(payload: {
     throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      from: process.env.RESEND_FROM_EMAIL || "FieldTicket <onboarding@resend.dev>",
-      to: [payload.to],
-      subject: payload.subject,
-      html: payload.html,
-      reply_to: payload.replyTo,
-      attachments: [
-        {
-          filename: payload.pdfFilename,
-          content: payload.pdfBase64,
-        },
-      ],
-    }),
-  });
+  const response = await retryFetch(
+    "https://api.resend.com/emails",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM_EMAIL || "FieldTicket <onboarding@resend.dev>",
+        to: [payload.to],
+        subject: payload.subject,
+        html: payload.html,
+        reply_to: payload.replyTo,
+        attachments: [
+          {
+            filename: payload.pdfFilename,
+            content: payload.pdfBase64,
+          },
+        ],
+      }),
+    }
+  );
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));

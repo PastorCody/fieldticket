@@ -1,4 +1,7 @@
 import type { StructuredTicket, AIQuestion, PricingData } from "@/types";
+import { retryFetch } from "./retry-fetch";
+
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
 /* ── Q&A Answer Processing ─────────────────────────────── */
 
@@ -29,31 +32,34 @@ export async function processQAAnswer(
   fieldUpdates: Record<string, unknown>;
   confidence: "high" | "medium" | "low";
 }> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 512,
-      system: QA_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Question asked: "${question}"
+  const response = await retryFetch(
+    "https://api.anthropic.com/v1/messages",
+    {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 512,
+        system: QA_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Question asked: "${question}"
 Target field: ${field}
 
 Current field values for context:
 ${JSON.stringify(currentFields, null, 2)}
 
 Worker's answer: "${answer}"`,
-        },
-      ],
-    }),
-  });
+          },
+        ],
+      }),
+    }
+  );
 
   if (!response.ok) {
     const error = await response.text();
@@ -121,25 +127,28 @@ export async function structureTranscript(transcript: string): Promise<{
   questions: AIQuestion[];
   pricing?: PricingData;
 }> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Transcript:\n\n${transcript}`,
-        },
-      ],
-    }),
-  });
+  const response = await retryFetch(
+    "https://api.anthropic.com/v1/messages",
+    {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 2048,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Transcript:\n\n${transcript}`,
+          },
+        ],
+      }),
+    }
+  );
 
   if (!response.ok) {
     const error = await response.text();

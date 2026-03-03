@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Upload, Check, LogOut } from "lucide-react";
+import { Loader2, Upload, Check, LogOut, PenLine } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import type { Profile } from "@/types";
@@ -18,6 +18,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [sigFile, setSigFile] = useState<File | null>(null);
+  const [sigPreview, setSigPreview] = useState<string | null>(null);
   const supabase = createClient();
   const router = useRouter();
 
@@ -40,6 +42,7 @@ export default function ProfilePage() {
     if (data) {
       setProfile(data);
       if (data.logo_url) setLogoPreview(data.logo_url);
+      if (data.signature_url) setSigPreview(data.signature_url);
     }
     setLoading(false);
   }
@@ -55,6 +58,17 @@ export default function ProfilePage() {
     setLogoPreview(URL.createObjectURL(file));
   }
 
+  async function handleSigChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Signature image must be under 2MB");
+      return;
+    }
+    setSigFile(file);
+    setSigPreview(URL.createObjectURL(file));
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -65,6 +79,7 @@ export default function ProfilePage() {
     if (!user) return;
 
     let logoUrl = profile.logo_url;
+    let sigUrl = profile.signature_url;
 
     // Upload logo if changed
     if (logoFile) {
@@ -82,6 +97,22 @@ export default function ProfilePage() {
       }
     }
 
+    // Upload signature if changed
+    if (sigFile) {
+      const ext = sigFile.name.split(".").pop();
+      const path = `${user.id}/signature.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("signatures")
+        .upload(path, sigFile, { upsert: true });
+
+      if (!uploadError) {
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("signatures").getPublicUrl(path);
+        sigUrl = publicUrl;
+      }
+    }
+
     const { error } = await supabase
       .from("profiles")
       .update({
@@ -89,6 +120,7 @@ export default function ProfilePage() {
         phone: (profile.phone || "").trim() || null,
         company_name: (profile.company_name || "").trim() || null,
         logo_url: logoUrl,
+        signature_url: sigUrl,
         updated_at: new Date().toISOString(),
       })
       .eq("id", user.id);
@@ -191,6 +223,38 @@ export default function ProfilePage() {
                     type="file"
                     accept="image/*"
                     onChange={handleLogoChange}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-base">Signature</Label>
+              <p className="text-xs text-muted-foreground">
+                Appears on every PDF field ticket you send
+              </p>
+              <div className="flex items-center gap-4">
+                {sigPreview ? (
+                  <img
+                    src={sigPreview}
+                    alt="Signature"
+                    className="h-12 w-32 object-contain border border-border rounded-lg bg-white p-1"
+                  />
+                ) : (
+                  <div className="h-12 w-32 rounded-lg border border-dashed border-border flex items-center justify-center">
+                    <PenLine className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                )}
+                <label className="cursor-pointer">
+                  <span className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-sm font-medium hover:bg-secondary/80 transition-colors">
+                    <PenLine className="h-4 w-4" />
+                    {sigPreview ? "Change" : "Upload"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    onChange={handleSigChange}
                     className="hidden"
                   />
                 </label>

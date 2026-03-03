@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAutosave } from "@/hooks/use-autosave";
+import { formatDistanceToNow } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -304,6 +306,40 @@ export default function ReviewPage() {
   const [template, setTemplate] = useState<ContactTemplate | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // ── Autosave ──
+  const silentSave = useCallback(async (): Promise<boolean> => {
+    if (!fields || saving) return false;
+    const { error } = await supabase
+      .from("tickets")
+      .update({
+        structured_data: fields,
+        ai_answers: aiAnswers,
+        pricing_data:
+          pricing.rate_type !== "none" || pricing.line_items.length > 0
+            ? pricing
+            : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", ticketId);
+    return !error;
+  }, [fields, aiAnswers, pricing, ticketId, saving, supabase]);
+
+  const autosaveData = { fields, aiAnswers, pricing };
+  const { isDirty, lastSaved, isSaving: isAutoSaving } = useAutosave(
+    autosaveData,
+    silentSave,
+    { delayMs: 3000, enabled: !loading && !!fields && ticket?.status === "draft" }
+  );
+
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
 
   useEffect(() => {
     loadTicket();
@@ -1443,6 +1479,23 @@ export default function ReviewPage() {
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Autosave status */}
+      {ticket?.status === "draft" && (
+        <div className="flex items-center justify-center gap-2 text-xs pb-1">
+          {isAutoSaving ? (
+            <span className="text-orange-400 flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+            </span>
+          ) : isDirty ? (
+            <span className="text-yellow-400">Unsaved changes</span>
+          ) : lastSaved ? (
+            <span className="text-green-400">
+              Saved {formatDistanceToNow(lastSaved, { addSuffix: true })}
+            </span>
+          ) : null}
+        </div>
       )}
 
       {/* Actions */}

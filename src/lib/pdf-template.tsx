@@ -4,6 +4,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { StructuredTicket, Profile, PricingData } from "@/types";
@@ -372,6 +373,12 @@ export function FieldTicketPDF({
         {/* ── Navy banner with ticket info ────────────── */}
         <View style={s.banner}>
           <View style={s.bannerLeft}>
+            {profile.logo_url && (
+              <Image
+                src={profile.logo_url}
+                style={{ width: 56, height: 56, marginBottom: 6, borderRadius: 4 }}
+              />
+            )}
             <Text style={s.bannerTitle}>FIELD TICKET</Text>
             <Text style={s.bannerSubtitle}>
               {profile.company_name || profile.full_name}
@@ -697,6 +704,12 @@ export function FieldTicketPDF({
               }}
             >
               <View>
+                {profile.signature_url && (
+                  <Image
+                    src={profile.signature_url}
+                    style={{ width: 150, height: 50, marginTop: 6 }}
+                  />
+                )}
                 <View style={s.sigLine}>
                   <Text style={s.sigLabel}>Worker Signature</Text>
                 </View>
